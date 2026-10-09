@@ -39,6 +39,10 @@ def _weather_font(size):
 W, H = 800, 480
 M = 16
 DIV_Y = 268  # horizontal dividers left and right share this height
+# Fixed threshold instead of Floyd-Steinberg dithering: our content is
+# already black-on-white, so a threshold keeps edges crisp without
+# scattered pixels around fine icon strokes.
+BLACK_THRESHOLD = 160
 
 # Display stands in Berlin: explicit timezone, independent of the Pi's
 # system timezone (which may be e.g. London/BST).
@@ -176,7 +180,7 @@ def render(data=None, now=None):
     rule(M, 448, W - M)
     d.text((M, 454), "Update alle 10 Min · Wetter: Open-Meteo", font=F_foot, fill=0)
 
-    return img.convert("1")
+    return img.point(lambda p: 255 if p >= BLACK_THRESHOLD else 0, mode="1")
 
 
 def render_raw(img=None):
