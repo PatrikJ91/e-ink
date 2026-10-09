@@ -5,6 +5,7 @@ Stdlib only. Run on the Pi with:  python3 server.py  (serves on :8080)
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from render import render, render_bmp, render_raw
+from weather import get_weather
 
 PORT = 8080
 
@@ -24,9 +25,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/health":
             self._send(200, "text/plain", b"ok")
         elif self.path == "/display.raw":
-            self._send(200, "application/octet-stream", render_raw())
+            self._send(200, "application/octet-stream", render_raw(render(get_weather())))
         elif self.path == "/display.bmp":
-            self._send(200, "image/bmp", render_bmp())
+            self._send(200, "image/bmp", render_bmp(render(get_weather())))
         else:
             self._send(404, "text/plain", b"unknown path")
 

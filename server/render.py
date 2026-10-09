@@ -5,10 +5,36 @@ dict so mocked data can later be replaced 1:1 by real sensor/API/calendar
 sources without touching the drawing code.
 """
 import io
-import math
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont
+
+BASE_DIR = Path(__file__).resolve().parent
+
+# Weather Icons by Erik Flowers (SIL Open Font License 1.1),
+# bundled in assets/. Day variants match the reference style.
+GLYPHS = {
+    # Sun-free variants so the icon matches the text (no sun in "Regen").
+    "sun": "\uf00d",      # day-sunny
+    "partly": "\uf002",   # day-cloudy
+    "cloud": "\uf041",    # cloud
+    "fog": "\uf014",      # fog
+    "drizzle": "\uf01a",  # showers (no sun)
+    "rain": "\uf019",     # rain (no sun)
+    "snow": "\uf01b",     # snow (no sun)
+    "storm": "\uf01e",    # storm-showers (no sun)
+}
+
+
+def _weather_font(size):
+    for path in (BASE_DIR / "assets" / "weather-icons.ttf",
+                 Path("/usr/share/fonts/truetype/weather-icons/weather-icons.ttf")):
+        try:
+            return ImageFont.truetype(str(path), size)
+        except OSError:
+            continue
+    raise RuntimeError("weather icon font not found in assets/")
 
 W, H = 800, 480
 M = 16
@@ -25,6 +51,7 @@ MONTHS = ["", "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
           "August", "September", "Oktober", "November", "Dezember"]
 
 MOCK = {
+    "location": "DÜRRLEWANG · 70565",
     "indoor": {"label": "Wohnzimmer", "temp": "21,5 °C", "humidity": "Luftfeuchte 45 %"},
     "outdoor": {"label": "Berlin", "temp": "14,2 °C", "sub": "Bewölkt · gefühlt 12 °C"},
     "forecast": [
@@ -86,43 +113,24 @@ def render(data=None, now=None):
     def rule(x0, y, x1, w=3):
         d.line([(x0, y), (x1, y)], fill=0, width=w)
 
-    # Header
-    d.text((M, 12), "E-INK DASHBOARD", font=F_title, fill=0)
-    stand = "Fr %02d.%02d.  Stand %02d:%02d" % (now.day, now.month, now.hour, now.minute)
+    # Header: location instead of a generic title
+    loc = data.get("location", "")
+    d.text((M, 12), loc, font=fit(loc, W - 2 * M - 330, 34, True), fill=0)
+    stand = "%s %02d.%02d.  Stand %02d:%02d" % (
+        WEEKDAYS[now.weekday()][:2], now.day, now.month, now.hour, now.minute)
     bb = d.textbbox((0, 0), stand, font=F_meta)
     d.text((W - M - (bb[2] - bb[0]), 20), stand, font=F_meta, fill=0)
     rule(M, 66, W - M)
 
-    # Forecast icons (shaded so they survive 1-bit dithering)
-    def icon_sun(x, y):
-        cx, cy, r = x + 30, y + 26, 17
-        for k in range(8):
-            a = math.pi * k / 4 + math.pi / 8
-            x0 = cx + int((r + 4) * math.cos(a))
-            y0 = cy + int((r + 4) * math.sin(a))
-            x1 = cx + int((r + 10) * math.cos(a))
-            y1 = cy + int((r + 10) * math.sin(a))
-            d.line([(x0, y0), (x1, y1)], fill=0, width=3)
-        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=150, outline=0, width=3)
-        d.ellipse([x + 2, y + 32, x + 26, y + 54], fill=255, outline=0, width=3)
-        d.ellipse([x + 18, y + 26, x + 46, y + 50], fill=255, outline=0, width=3)
-        d.line([(x + 2, y + 52), (x + 50, y + 52)], fill=0, width=3)
+    # Forecast icons from the bundled Weather Icons font, left-aligned
+    # with the day label (centering pushed them too far right).
+    # Small enough to leave a clear gap above the temperatures.
+    F_icon = _weather_font(48)
 
-    def icon_cloud(x, y):
-        d.ellipse([x + 4, y + 14, x + 32, y + 42], fill=255, outline=0, width=3)
-        d.ellipse([x + 24, y + 4, x + 54, y + 36], fill=255, outline=0, width=3)
-        d.ellipse([x + 12, y + 20, x + 30, y + 38], fill=200, outline=0)
-        d.line([(x + 4, y + 40), (x + 56, y + 40)], fill=0, width=3)
-
-    def icon_rain(x, y):
-        d.ellipse([x + 6, y + 4, x + 30, y + 26], fill=255, outline=0, width=3)
-        d.ellipse([x + 24, y, x + 50, y + 22], fill=255, outline=0, width=3)
-        d.line([(x + 6, y + 24), (x + 52, y + 24)], fill=0, width=3)
-        for dx in (14, 28, 42):
-            d.line([(x + dx, y + 30), (x + dx - 5, y + 44)], fill=0, width=3)
-            d.line([(x + dx, y + 48), (x + dx - 5, y + 58)], fill=0, width=3)
-
-    icons = {"sun": icon_sun, "cloud": icon_cloud, "rain": icon_rain}
+    def draw_icon(key, cx, y):
+        glyph = GLYPHS.get(key, GLYPHS["cloud"])
+        bb = d.textbbox((0, 0), glyph, font=F_icon)
+        d.text((cx - bb[0], y), glyph, font=F_icon, fill=0)
 
     # Left: temperatures
     indoor, outdoor = data["indoor"], data["outdoor"]
@@ -133,9 +141,10 @@ def render(data=None, now=None):
     rule(M, DIV_Y, M + 368)
 
     y2 = DIV_Y + 12
-    d.text((M, y2), "AUSSEN  ·  %s" % outdoor["label"], font=F_label, fill=0)
+    outside_title = "AUSSEN" + ("  ·  " + outdoor["label"] if outdoor["label"] else "")
+    d.text((M, y2), outside_title, font=F_label, fill=0)
     d.text((M, y2 + 30), outdoor["temp"], font=fit(outdoor["temp"], 368, 88, True), fill=0)
-    d.text((M, y2 + 130), outdoor["sub"], font=F_sub, fill=0)
+    d.text((M, y2 + 130), outdoor["sub"], font=fit(outdoor["sub"], 368, 22), fill=0)
 
     d.line([(400, 80), (400, 436)], fill=0, width=3)
 
@@ -147,9 +156,9 @@ def render(data=None, now=None):
     for i, fc in enumerate(data["forecast"][:3]):
         cx = RX + i * cell_w
         d.text((cx, 116), fc["day"], font=F_day, fill=0)
-        icons.get(fc["icon"], icon_cloud)(cx, 146)
+        draw_icon(fc["icon"], cx, 142)
         d.text((cx, 212), fc["temps"], font=F_body, fill=0)
-        d.text((cx, 240), fc["cond"], font=F_small, fill=0)
+        d.text((cx, 240), fc["cond"], font=fit(fc["cond"], cell_w - 4, 20), fill=0)
     rule(RX, DIV_Y, RX + RW)
 
     # Right bottom: events (title column starts after the widest time)
@@ -165,7 +174,7 @@ def render(data=None, now=None):
 
     # Footer
     rule(M, 448, W - M)
-    d.text((M, 454), "Update alle 10 Min · Beispielwerte", font=F_foot, fill=0)
+    d.text((M, 454), "Update alle 10 Min · Wetter: Open-Meteo", font=F_foot, fill=0)
 
     return img.convert("1")
 
