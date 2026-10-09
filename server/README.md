@@ -14,6 +14,11 @@ Aufgaben:
 - Start auf dem Pi: `ssh eink-raspi "cd ~/e-ink/server && setsid python3 server.py < /dev/null > server.log 2>&1 &"` (danach SSH einfach zumachen, läuft weiter).
 - Stopp: `ssh eink-raspi "fuser -k 8080/tcp"` (nötig nach Code-Änderung, der Server lädt den Code nur beim Start).
 - Test vom Mac: `curl http://192.168.178.40:8080/health` → `ok`; raw muss 48.000 Bytes haben.
+- Falsche „Stand"-Zeit: der Render-Code nutzt fest `Europe/Berlin`
+  (unabhängig von der Pi-Systemzeit) — prüfen, ob `render.py` aktuell
+  deployed ist und der Server danach neugestartet wurde.
+- Pillow fehlt (eigentlich vorinstalliert): prüfen mit
+  `python3 -c "import PIL; print(PIL.__version__)"`.
 
 ## Zugriff (SSH)
 

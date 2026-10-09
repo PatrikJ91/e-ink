@@ -7,11 +7,16 @@ sources without touching the drawing code.
 import io
 import math
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont
 
 W, H = 800, 480
 M = 16
 DIV_Y = 268  # horizontal dividers left and right share this height
+
+# Display stands in Berlin: explicit timezone, independent of the Pi's
+# system timezone (which may be e.g. London/BST).
+TZ = ZoneInfo("Europe/Berlin")
 
 # No locale dependency: German names hardcoded (Pi locale may be C/POSIX).
 WEEKDAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag",
@@ -55,7 +60,7 @@ def _font(size, bold=False):
 def render(data=None, now=None):
     """Draw the dashboard, return a 1-bit PIL image."""
     data = data or MOCK
-    now = now or datetime.now()
+    now = now or datetime.now(TZ)
     img = Image.new("L", (W, H), 255)
     d = ImageDraw.Draw(img)
 
