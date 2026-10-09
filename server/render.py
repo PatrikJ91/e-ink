@@ -38,7 +38,7 @@ def _weather_font(size):
 
 W, H = 800, 480
 M = 16
-DIV_Y = 268  # horizontal dividers left and right share this height
+DIV_Y = 222  # horizontal dividers left and right share this height
 # Fixed threshold instead of Floyd-Steinberg dithering: our content is
 # already black-on-white, so a threshold keeps edges crisp without
 # scattered pixels around fine icon strokes.
@@ -64,10 +64,10 @@ MOCK = {
         {"day": "So", "icon": "rain", "temps": "12°/7°", "cond": "Regen"},
     ],
     "events": [
-        ("14:00", "Zahnarzt"),
-        ("16:30", "Anruf Mama"),
-        ("19:00", "Sport"),
-        ("Mo 09:00", "Standup"),
+        ("Fr 09.10.", "14:00", "Zahnarzt"),
+        ("Fr 09.10.", "16:30", "Anruf Mama"),
+        ("Fr 09.10.", "19:00", "Sport"),
+        ("Mo 12.10.", "09:00", "Standup"),
     ],
 }
 
@@ -95,10 +95,7 @@ def render(data=None, now=None):
     img = Image.new("L", (W, H), 255)
     d = ImageDraw.Draw(img)
 
-    F_title = _font(34, True)
-    F_meta = _font(22)
     F_label = _font(22, True)
-    F_big = _font(88, True)
     F_sub = _font(22)
     F_day = _font(24, True)
     F_body = _font(24)
@@ -117,68 +114,68 @@ def render(data=None, now=None):
     def rule(x0, y, x1, w=3):
         d.line([(x0, y), (x1, y)], fill=0, width=w)
 
-    # Header: location instead of a generic title
-    loc = data.get("location", "")
-    d.text((M, 12), loc, font=fit(loc, W - 2 * M - 330, 34, True), fill=0)
-    stand = "%s %02d.%02d.  Stand %02d:%02d" % (
-        WEEKDAYS[now.weekday()][:2], now.day, now.month, now.hour, now.minute)
-    bb = d.textbbox((0, 0), stand, font=F_meta)
-    d.text((W - M - (bb[2] - bb[0]), 20), stand, font=F_meta, fill=0)
-    rule(M, 66, W - M)
-
     # Forecast icons from the bundled Weather Icons font, left-aligned
-    # with the day label (centering pushed them too far right).
-    # Small enough to leave a clear gap above the temperatures.
-    F_icon = _weather_font(48)
+    # with the day label. Small enough to clear the temperatures below
+    # (rain glyphs extend far below the baseline).
+    F_icon = _weather_font(50)
 
     def draw_icon(key, cx, y):
         glyph = GLYPHS.get(key, GLYPHS["cloud"])
         bb = d.textbbox((0, 0), glyph, font=F_icon)
         d.text((cx - bb[0], y), glyph, font=F_icon, fill=0)
 
-    # Left: temperatures
+    # Left: temperatures (no header anymore: everything moved up)
     indoor, outdoor = data["indoor"], data["outdoor"]
-    y = 84
+    y = 20
     d.text((M, y), "INNEN  ·  %s" % indoor["label"], font=F_label, fill=0)
-    d.text((M, y + 30), indoor["temp"], font=fit(indoor["temp"], 368, 88, True), fill=0)
-    d.text((M, y + 130), indoor["humidity"], font=F_sub, fill=0)
+    d.text((M, y + 32), indoor["temp"], font=fit(indoor["temp"], 368, 100, True), fill=0)
+    d.text((M, y + 148), indoor["humidity"], font=F_sub, fill=0)
     rule(M, DIV_Y, M + 368)
 
-    y2 = DIV_Y + 12
+    y2 = DIV_Y + 14
     outside_title = "AUSSEN" + ("  ·  " + outdoor["label"] if outdoor["label"] else "")
     d.text((M, y2), outside_title, font=F_label, fill=0)
-    d.text((M, y2 + 30), outdoor["temp"], font=fit(outdoor["temp"], 368, 88, True), fill=0)
-    d.text((M, y2 + 130), outdoor["sub"], font=fit(outdoor["sub"], 368, 22), fill=0)
+    d.text((M, y2 + 32), outdoor["temp"], font=fit(outdoor["temp"], 368, 100, True), fill=0)
+    d.text((M, y2 + 148), outdoor["sub"], font=fit(outdoor["sub"], 368, 22), fill=0)
 
-    d.line([(400, 80), (400, 436)], fill=0, width=3)
+    d.line([(400, 20), (400, 436)], fill=0, width=3)
 
     # Right: forecast
     RX = 416
     RW = W - M - RX
-    d.text((RX, 84), "VORHERSAGE", font=F_label, fill=0)
+    d.text((RX, 20), "VORHERSAGE", font=F_label, fill=0)
     cell_w = RW // 3
     for i, fc in enumerate(data["forecast"][:3]):
         cx = RX + i * cell_w
-        d.text((cx, 116), fc["day"], font=F_day, fill=0)
-        draw_icon(fc["icon"], cx, 142)
-        d.text((cx, 212), fc["temps"], font=F_body, fill=0)
-        d.text((cx, 240), fc["cond"], font=fit(fc["cond"], cell_w - 4, 20), fill=0)
+        d.text((cx, 52), fc["day"], font=F_day, fill=0)
+        draw_icon(fc["icon"], cx, 80)
+        d.text((cx, 152), fc["temps"], font=F_body, fill=0)
+        d.text((cx, 182), fc["cond"], font=fit(fc["cond"], cell_w - 4, 20), fill=0)
     rule(RX, DIV_Y, RX + RW)
 
-    # Right bottom: events (title column starts after the widest time)
+    # Right bottom: events in 3 columns (date, time, name).
+    # Date/time use a smaller font and tight gaps so the name column
+    # gets maximum width; column starts are measured so nothing overlaps.
+    F_ev = _font(18, True)
     events = data["events"][:4]
-    title_x = RX + max(d.textlength(t, font=F_day) for t, _ in events) + 12
-    yt = DIV_Y + 12
-    d.text((RX, yt), "TERMINE  ·  Heute", font=F_label, fill=0)
-    yy = yt + 34
-    for t, title in events:
-        d.text((RX, yy), t, font=F_day, fill=0)
-        d.text((title_x, yy), title, font=fit(title, RX + RW - title_x, 24), fill=0)
-        yy += 32
+    date_x = RX
+    time_x = date_x + max(d.textlength(day, font=F_ev) for day, _, _ in events) + 10
+    title_x = time_x + max(d.textlength(t, font=F_ev) for _, t, _ in events) + 10
+    title_w = RX + RW - title_x
+    yt = DIV_Y + 14
+    d.text((RX, yt), "TERMINE", font=F_label, fill=0)
+    yy = yt + 36
+    for day, t, title in events:
+        d.text((date_x, yy), day, font=F_ev, fill=0)
+        d.text((time_x, yy), t, font=F_ev, fill=0)
+        d.text((title_x, yy), title, font=fit(title, title_w, 22), fill=0)
+        yy += 36
 
-    # Footer
+    # Footer: date + update time, small, bottom left
     rule(M, 448, W - M)
-    d.text((M, 454), "Update alle 10 Min · Wetter: Open-Meteo", font=F_foot, fill=0)
+    d.text((M, 454), "%s, %02d.%02d. · Stand %02d:%02d" % (
+        WEEKDAYS[now.weekday()], now.day, now.month, now.hour, now.minute),
+        font=F_foot, fill=0)
 
     return img.point(lambda p: 255 if p >= BLACK_THRESHOLD else 0, mode="1")
 
