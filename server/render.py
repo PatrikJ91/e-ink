@@ -155,7 +155,7 @@ def render(data=None, now=None):
     # Right: forecast
     RX = 416
     RW = W - M - RX
-    d.text((RX, 84), "WETTER  ·  Vorhersage", font=F_label, fill=0)
+    d.text((RX, 84), "VORHERSAGE", font=F_label, fill=0)
     cell_w = RW // 3
     for i, fc in enumerate(data["forecast"][:3]):
         cx = RX + i * cell_w
