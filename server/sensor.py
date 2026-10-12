@@ -11,11 +11,14 @@ import asyncio
 import struct
 import threading
 import time
+from pathlib import Path
 
 from bleak import BleakScanner
 
 from render import MOCK
 
+BASE_DIR = Path(__file__).resolve().parent
+MAC_FILE = BASE_DIR / "sensor.mac"  # auto-pinned on first sighting (gitignored)
 SVC_UUID = "0000181a-0000-1000-8000-00805f9b34fb"
 POLL_INTERVAL = 300
 SCAN_SECONDS = 10
@@ -35,19 +38,36 @@ def _parse(payload):
             "batt": batt, "ts": time.time()}
 
 
+def _pinned_mac():
+    try:
+        return MAC_FILE.read_text().strip().upper() or None
+    except OSError:
+        return None
+
+
 async def _scan_once():
+    pinned = _pinned_mac()
     found = []
     devs = await BleakScanner.discover(timeout=SCAN_SECONDS, return_adv=True)
     for addr, (dev, adv) in devs.items():
         name = adv.local_name or ""
         if name.startswith("ATC_") and SVC_UUID in adv.service_data:
             parsed = _parse(bytes(adv.service_data[SVC_UUID]))
-            if parsed:
-                found.append((adv.rssi or -999, parsed))
+            if parsed is None:
+                continue
+            if pinned and parsed["mac"] != pinned:
+                continue  # foreign sensor (e.g. neighbour's)
+            found.append((adv.rssi or -999, parsed))
     if not found:
         return None
-    found.sort(reverse=True)
-    return found[0][1]
+    found.sort(key=lambda x: x[0], reverse=True)
+    best = found[0][1]
+    if not pinned:
+        try:
+            MAC_FILE.write_text(best["mac"])  # pin for all future scans
+        except OSError:
+            pass
+    return best
 
 
 def _loop():

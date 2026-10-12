@@ -4,13 +4,15 @@
 // Einmalig: secrets.example.h nach secrets.h kopieren und WLAN eintragen
 // (secrets.h ist per .gitignore ausgeschlossen und landet nie im Repo).
 //
-// Ablauf pro Zyklus: WLAN verbinden -> GET /display.raw (48000 Bytes,
-// 1 = schwarz) -> Full-Refresh -> hibernate -> Deep-Sleep 10 Min.
+// Ablauf pro Zyklus: WLAN verbinden -> Nachtpause? (0-6 Uhr schlafen) ->
+// GET /display.raw (48000 Bytes, 1 = schwarz) -> nur bei Aenderung
+// Full-Refresh (Hash im RTC-Memory) -> hibernate -> Deep-Sleep 10 Min.
 
 #include <SPI.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <esp_sleep.h>
+#include <time.h>
 #include <GxEPD2_BW.h>
 #include "secrets.h"
 
@@ -35,10 +37,35 @@ GxEPD2_BW<GxEPD2_750_GDEY075T7, 120>
 
 static uint8_t img[IMG_BYTES]; // 48 KB Bildspeicher im DRAM
 
-static void sleep10min() {
+// Letzter Bild-Hash, ueberlebt Deep-Sleep (nicht aber Stromverlust).
+RTC_DATA_ATTR uint32_t last_hash = 0;
+RTC_DATA_ATTR bool hash_valid = false;
+
+static uint32_t fnv1a(const uint8_t* p, size_t n) {
+  uint32_t h = 2166136261UL;
+  for (size_t i = 0; i < n; i++) { h ^= p[i]; h *= 16777619UL; }
+  return h;
+}
+
+static void deepSleepUs(uint64_t us) {
   WiFi.disconnect(true);
-  esp_sleep_enable_timer_wakeup(SLEEP_US);
+  esp_sleep_enable_timer_wakeup(us);
   esp_deep_sleep_start();
+}
+
+static void sleep10min() { deepSleepUs(SLEEP_US); }
+
+// true zwischen 0 und 6 Uhr (NTP, Berlin). Bei NTP-Fehler: false,
+// das Dashboard laeuft dann normal weiter.
+static bool nightTime(struct tm* out) {
+  configTime(0, 0, "pool.ntp.org");
+  setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
+  tzset();
+  if (!getLocalTime(out, 5000)) {
+    Serial.println("NTP fehlgeschlagen, trotzdem fortfahren");
+    return false;
+  }
+  return out->tm_hour < 6;
 }
 
 static bool connectWiFi() {
@@ -97,8 +124,22 @@ void setup() {
   Serial.print("WiFi ok, IP: ");
   Serial.println(WiFi.localIP());
 
+  struct tm now_tm;
+  if (nightTime(&now_tm)) {
+    long now_s = now_tm.tm_hour * 3600L + now_tm.tm_min * 60L + now_tm.tm_sec;
+    uint64_t us = (uint64_t)(6L * 3600L - now_s) * 1000000ULL;
+    Serial.printf("Nachtpause 0-6 Uhr, schlafe %lu s\n", (unsigned long)(us / 1000000ULL));
+    deepSleepUs(us);
+  }
+
   if (!fetchImage()) {
     Serial.println("Bild-Download fehlgeschlagen, altes Bild bleibt");
+    sleep10min();
+  }
+
+  uint32_t h = fnv1a(img, IMG_BYTES);
+  if (hash_valid && h == last_hash) {
+    Serial.println("Bild unveraendert, kein Refresh");
     sleep10min();
   }
 
@@ -114,6 +155,8 @@ void setup() {
   } while (display.nextPage());
 
   display.hibernate(); // Bild bleibt ohne Strom sichtbar
+  last_hash = h;
+  hash_valid = true;
   Serial.println("Fertig! Deep-Sleep 10 Min ...");
   sleep10min();
 }

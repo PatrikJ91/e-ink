@@ -6,6 +6,7 @@ sources without touching the drawing code.
 """
 import io
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont
@@ -78,6 +79,7 @@ _FONT_PATHS = [
 ]
 
 
+@lru_cache(maxsize=None)  # fonts never change at runtime
 def _font(size, bold=False):
     for pattern in _FONT_PATHS:
         path = pattern.format(bold="-Bold" if bold and "DejaVu" in pattern else "")

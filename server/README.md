@@ -10,7 +10,8 @@ Aufgaben:
 ## Betrieb (Mock-Stand)
 
 - `render.py`: erzeugt das 800×480 1-bit Bild (V1-Layout) aus dem `MOCK`-Dict. `server.py`: stdlib-HTTP auf Port 8080 (`/health`, `/display.raw` = 48.000 Bytes, 1 = schwarz, `/display.bmp` zur Kontrolle im Browser).
-- Deploy: `scp server/render.py server/server.py eink-raspi:~/e-ink/server/`
+- Abhängigkeiten (einmalig auf dem Pi): `pip3 install -r requirements.txt` (Datei vorher mit deployen; Pillow kommt aus dem System und steht nicht drin).
+- Deploy: `scp server/*.py server/requirements.txt eink-raspi:~/e-ink/server/ && scp server/assets/weather-icons.ttf eink-raspi:~/e-ink/server/assets/` (vorher einmal `ssh eink-raspi "mkdir -p ~/e-ink/server/assets"`). Achtung: `calendar.url`/`sensor.mac` nie mitkopieren — liegen nur auf dem Pi.
 - Start auf dem Pi: `ssh eink-raspi "cd ~/e-ink/server && setsid python3 server.py < /dev/null > server.log 2>&1 &"` (danach SSH einfach zumachen, läuft weiter).
 - Stopp: `ssh eink-raspi "fuser -k 8080/tcp"` (nötig nach Code-Änderung, der Server lädt den Code nur beim Start).
 - Test vom Mac: `curl http://192.168.178.40:8080/health` → `ok`; raw muss 48.000 Bytes haben.

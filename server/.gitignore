@@ -1,0 +1,5 @@
+# Secrets + Laufzeitdaten bleiben lokal und landen nie im Repo.
+calendar.url
+sensor.mac
+*.log
+__pycache__/

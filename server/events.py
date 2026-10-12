@@ -70,6 +70,7 @@ def get_events():
     except Exception:
         if _CACHE["data"] is None:
             _CACHE["data"] = list(MOCK["events"])
+        _CACHE["ts"] = time.time()  # Negativ-Caching: kein Retry-Storm
     return _CACHE["data"]
 
 

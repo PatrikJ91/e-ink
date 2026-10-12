@@ -93,6 +93,7 @@ def get_weather():
             fallback = dict(MOCK)
             fallback["location"] = LOCATION
             _CACHE["data"] = fallback
+        _CACHE["ts"] = time.time()  # Negativ-Caching: kein Retry-Storm
     return _CACHE["data"]
 
 

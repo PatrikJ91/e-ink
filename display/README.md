@@ -32,8 +32,10 @@ Schalter am Driver-Board: Nr. 1 auf B (7,5" s/w), Nr. 2 auf ON (sonst kein Uploa
 ## Dashboard-Sketch (Server-Bild anzeigen)
 
 Sketch `epaper_dashboard/epaper_dashboard.ino`: holt alle 10 Min das fertige
-Bild vom Pi (`GET http://192.168.178.40:8080/display.raw`), Full-Refresh,
-danach Deep-Sleep. `epaper_hello` bleibt als reiner Display-Test erhalten.
+Bild vom Pi (`GET http://192.168.178.40:8080/display.raw`), Full-Refresh
+nur bei geändertem Bild (Hash im RTC-Memory), danach Deep-Sleep.
+Zwischen 0 und 6 Uhr kein Refresh (Nachtpause per NTP).
+`epaper_hello` bleibt als reiner Display-Test erhalten.
 
 1. `cp display/epaper_dashboard/secrets.example.h display/epaper_dashboard/secrets.h`,
    WLAN eintragen (bleibt lokal, `secrets.h` ist per `.gitignore` ausgeschlossen).
