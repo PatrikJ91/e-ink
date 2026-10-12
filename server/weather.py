@@ -12,7 +12,6 @@ from datetime import date
 from render import MOCK
 
 LAT, LON = 48.71838, 9.11792  # 70565 Dürrlewang (Stuttgart)
-LOCATION = "DÜRRLEWANG · 70565"
 CACHE_TTL = 600
 
 URL = ("https://api.open-meteo.com/v1/forecast"
@@ -67,7 +66,6 @@ def _fetch():
             "cond": dcond,
         })
     return {
-        "location": LOCATION,
         "indoor": MOCK["indoor"],  # sensor comes later
         "outdoor": {
             "label": "",
@@ -90,9 +88,7 @@ def get_weather():
         _CACHE["ts"] = time.time()
     except Exception:
         if _CACHE["data"] is None:
-            fallback = dict(MOCK)
-            fallback["location"] = LOCATION
-            _CACHE["data"] = fallback
+            _CACHE["data"] = dict(MOCK)
         _CACHE["ts"] = time.time()  # Negativ-Caching: kein Retry-Storm
     return _CACHE["data"]
 

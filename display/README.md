@@ -40,7 +40,9 @@ Zwischen 0 und 6 Uhr kein Refresh (Nachtpause per NTP).
 1. `cp display/epaper_dashboard/secrets.example.h display/epaper_dashboard/secrets.h`,
    WLAN eintragen (bleibt lokal, `secrets.h` ist per `.gitignore` ausgeschlossen).
 2. Hochladen wie oben (Board, Port, Schalter identisch).
-3. Serieller Monitor 115200: `WiFi ok`, `HTTP 200`, `48000 Bytes gelesen`, `Fertig!`.
+3. Serieller Monitor 115200: `WiFi ok`, `Server-Hash: …`, dann entweder
+   `Bild unveraendert, kein Download/Refresh` oder
+   `HTTP 200`, `48000 Bytes gelesen`, `Fertig!`.
 
 ## Alternative ohne Arduino IDE: arduino-cli (MacBook)
 

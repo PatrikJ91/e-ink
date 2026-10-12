@@ -52,11 +52,8 @@ TZ = ZoneInfo("Europe/Berlin")
 # No locale dependency: German names hardcoded (Pi locale may be C/POSIX).
 WEEKDAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag",
             "Freitag", "Samstag", "Sonntag"]
-MONTHS = ["", "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
-          "August", "September", "Oktober", "November", "Dezember"]
 
 MOCK = {
-    "location": "DÜRRLEWANG · 70565",
     "indoor": {"label": "Wohnzimmer", "temp": "21,5 °C", "humidity": "Luftfeuchte 45 %"},
     "outdoor": {"label": "Berlin", "temp": "14,2 °C", "sub": "Bewölkt · gefühlt 12 °C"},
     "forecast": [
@@ -173,11 +170,12 @@ def render(data=None, now=None):
         d.text((title_x, yy), title, font=fit(title, title_w, 22), fill=0)
         yy += 36
 
-    # Footer: date + update time, small, bottom left
+    # Footer: weekday + date only, small, bottom left.
+    # No timestamp: the image must be a pure function of the data so the
+    # server hash (and the ESP skip logic) only changes on real changes.
     rule(M, 448, W - M)
-    d.text((M, 454), "%s, %02d.%02d. · Stand %02d:%02d" % (
-        WEEKDAYS[now.weekday()], now.day, now.month, now.hour, now.minute),
-        font=F_foot, fill=0)
+    d.text((M, 454), "%s, %02d.%02d." % (
+        WEEKDAYS[now.weekday()], now.day, now.month), font=F_foot, fill=0)
 
     return img.point(lambda p: 255 if p >= BLACK_THRESHOLD else 0, mode="1")
 

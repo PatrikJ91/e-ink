@@ -5,8 +5,9 @@
 // (secrets.h ist per .gitignore ausgeschlossen und landet nie im Repo).
 //
 // Ablauf pro Zyklus: WLAN verbinden -> Nachtpause? (0-6 Uhr schlafen) ->
-// GET /display.raw (48000 Bytes, 1 = schwarz) -> nur bei Aenderung
-// Full-Refresh (Hash im RTC-Memory) -> hibernate -> Deep-Sleep 10 Min.
+// GET /display.hash (32 Zeichen) -> nur bei Aenderung GET /display.raw
+// (48000 Bytes, 1 = schwarz) + Full-Refresh -> hibernate -> Deep-Sleep.
+// Der Server-Hash liegt im RTC-Memory und ueberlebt Deep-Sleep.
 
 #include <SPI.h>
 #include <WiFi.h>
@@ -21,6 +22,7 @@
 #endif
 
 #define DISPLAY_URL "http://192.168.178.40:8080/display.raw"
+#define DISPLAY_HASH_URL "http://192.168.178.40:8080/display.hash"
 #define IMG_W 800
 #define IMG_H 480
 #define IMG_BYTES (IMG_W * IMG_H / 8) // 48000
@@ -37,14 +39,29 @@ GxEPD2_BW<GxEPD2_750_GDEY075T7, 120>
 
 static uint8_t img[IMG_BYTES]; // 48 KB Bildspeicher im DRAM
 
-// Letzter Bild-Hash, ueberlebt Deep-Sleep (nicht aber Stromverlust).
-RTC_DATA_ATTR uint32_t last_hash = 0;
+// Letzter Server-Hash, ueberlebt Deep-Sleep (nicht aber Stromverlust).
+RTC_DATA_ATTR char srv_hash[33] = {0};
 RTC_DATA_ATTR bool hash_valid = false;
 
-static uint32_t fnv1a(const uint8_t* p, size_t n) {
-  uint32_t h = 2166136261UL;
-  for (size_t i = 0; i < n; i++) { h ^= p[i]; h *= 16777619UL; }
-  return h;
+// Holt den 32-Zeichen-Hash des aktuellen Server-Bilds.
+static bool fetchHash(char out[33]) {
+  HTTPClient http;
+  http.setTimeout(5000);
+  for (int attempt = 1; attempt <= 2; attempt++) {
+    if (!http.begin(DISPLAY_HASH_URL)) continue;
+    int code = http.GET();
+    bool ok = (code == 200 && http.getSize() == 32);
+    String s;
+    if (ok) s = http.getString();
+    http.end();
+    s.trim();
+    if (ok && s.length() == 32) {
+      s.toCharArray(out, 33);
+      return true;
+    }
+    delay(500);
+  }
+  return false;
 }
 
 static void deepSleepUs(uint64_t us) {
@@ -132,14 +149,20 @@ void setup() {
     deepSleepUs(us);
   }
 
-  if (!fetchImage()) {
-    Serial.println("Bild-Download fehlgeschlagen, altes Bild bleibt");
-    sleep10min();
+  char h[33] = {0};
+  bool have_hash = fetchHash(h);
+  if (have_hash) {
+    Serial.printf("Server-Hash: %s\n", h);
+    if (hash_valid && strcmp(h, srv_hash) == 0) {
+      Serial.println("Bild unveraendert, kein Download/Refresh");
+      sleep10min();
+    }
+  } else {
+    Serial.println("Hash-Abruf fehlgeschlagen, Bild laden");
   }
 
-  uint32_t h = fnv1a(img, IMG_BYTES);
-  if (hash_valid && h == last_hash) {
-    Serial.println("Bild unveraendert, kein Refresh");
+  if (!fetchImage()) {
+    Serial.println("Bild-Download fehlgeschlagen, altes Bild bleibt");
     sleep10min();
   }
 
@@ -155,8 +178,14 @@ void setup() {
   } while (display.nextPage());
 
   display.hibernate(); // Bild bleibt ohne Strom sichtbar
-  last_hash = h;
-  hash_valid = true;
+
+  // Hash erst JETZT merken: bricht der ESP vorher ab (der Full-Refresh
+  // zieht am meisten Strom), zeigt das Display noch das alte Bild und
+  // der naechste Zyklus muss neu zeichnen statt zu ueberspringen.
+  if (have_hash) {
+    strncpy(srv_hash, h, sizeof(srv_hash));
+    hash_valid = true;
+  }
   Serial.println("Fertig! Deep-Sleep 10 Min ...");
   sleep10min();
 }
