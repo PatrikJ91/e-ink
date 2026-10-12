@@ -7,6 +7,14 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from render import render, render_bmp, render_raw
 from weather import get_weather
 from events import get_events
+from sensor import get_indoor
+
+
+def _dashboard():
+    data = get_weather()
+    data["events"] = get_events()
+    data["indoor"] = get_indoor()
+    return data
 
 PORT = 8080
 
@@ -26,13 +34,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/health":
             self._send(200, "text/plain", b"ok")
         elif self.path == "/display.raw":
-            data = get_weather()
-            data["events"] = get_events()
-            self._send(200, "application/octet-stream", render_raw(render(data)))
+            self._send(200, "application/octet-stream", render_raw(render(_dashboard())))
         elif self.path == "/display.bmp":
-            data = get_weather()
-            data["events"] = get_events()
-            self._send(200, "image/bmp", render_bmp(render(data)))
+            self._send(200, "image/bmp", render_bmp(render(_dashboard())))
         else:
             self._send(404, "text/plain", b"unknown path")
 
