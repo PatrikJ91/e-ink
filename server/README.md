@@ -26,6 +26,23 @@ Aufgaben:
 - Pillow fehlt (eigentlich vorinstalliert): prüfen mit
   `python3 -c "import PIL; print(PIL.__version__)"`.
 
+## Sensor (BLE, LYWSD03MMC)
+
+- `sensor.py`: Scan-Thread alle 5 min; erster gefundener
+  `ATC_*`-Sensor wird in `sensor.mac` gepinnt (Pi-only, nie mitkopieren).
+  Werte älter als 1 h → Fallback auf MOCK („Wohnzimmer 21,5 °C / 45 %“).
+- Wichtig: der BLE-Event-Loop lebt für die gesamte Prozesslaufzeit
+  (`loop.run_until_complete` in `_loop()`), **nicht** umbauen auf
+  `asyncio.run()` pro Scan — das hinterließ je Scan eine tote
+  D-Bus-Verbindung; nach ~24 h (~280 Scans) verweigert dbus-daemon neue
+  Clients (`BleakDBusError AccessDenied`) und das Display fällt unbemerkt
+  auf MOCK zurück (Bug vom 16.10.2026, per Reboot + Fix behoben).
+- Fehlgeschlagene Scanrunden loggen Grund + Uhrzeit nach `server.log`
+  (`[MM-DD HH:MM:SS] scan failed: …`). Bei Mock-Werten auf dem Display:
+  1. `ssh eink-raspi "tail ~/e-ink/server/server.log"`
+  2. Sensor sichtbar? Handy-App nRF Connect → `ATC_*` suchen; fehlt er,
+     zuerst Batterie prüfen/tauschen (Batterie einmal raus und wieder rein).
+
 ## Zugriff (SSH)
 
 - Host: `192.168.178.40` (`raspberrypi.fritz.box`), Benutzer: `patrik`

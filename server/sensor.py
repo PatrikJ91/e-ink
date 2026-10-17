@@ -6,6 +6,11 @@ MAC[6] + temp int16LE/100 + humidity uint16LE/100 + battery mV uint16LE
 
 Polling runs in a background thread every 5 min so HTTP requests never
 wait for a BLE scan. Values older than 1 h fall back to MOCK.
+
+The event loop lives for the whole process, not one per scan: each
+asyncio.run() left a dead D-Bus connection behind, and after ~24 h of
+scans dbus-daemon refuses new clients (BleakDBusError AccessDenied),
+which silently switched the display back to MOCK.
 """
 import asyncio
 import struct
@@ -71,14 +76,22 @@ async def _scan_once():
 
 
 def _loop():
+    # One long-lived event loop for all scans: an asyncio.run() per scan
+    # leaks a D-Bus connection each time and kills the broker within a day.
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     while True:
         try:
-            data = asyncio.run(_scan_once())
+            data = loop.run_until_complete(_scan_once())
             if data:
                 with _lock:
                     _CACHE.update(ts=data["ts"], data=data)
-        except Exception:
-            pass
+        except Exception as e:
+            # write the reason into server.log; without it any scan
+            # problem only ever shows as silent MOCK fallback on display
+            print("[%s] scan failed: %s: %s" % (time.strftime("%m-%d %H:%M:%S"),
+                                                type(e).__name__, e),
+                  flush=True)
         time.sleep(POLL_INTERVAL)
 
 
