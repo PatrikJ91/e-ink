@@ -9,13 +9,14 @@ Aufbau:
 ## Komplett-Setup von Grund auf (ohne KI, Reihenfolge beachten)
 
 1. Pi per SSH einrichten: Key/Config siehe `server/README.md` („Zugriff").
-2. Server deployen + starten: siehe `server/README.md` („Betrieb").
-   Prüfen: `curl http://192.168.178.40:8080/health` → `ok`,
-   `/display.bmp` im Browser ansehen.
+2. Server deployen + starten: `server/deploy.sh` (optional mit Layout,
+   z. B. `server/deploy.sh classic`), einmalig vorher die Abhängigkeiten
+   auf dem Pi installieren — Details in `server/README.md` („Betrieb").
+   Danach `/display.bmp` im Browser ansehen.
 3. ESP flashen: `secrets.h` anlegen, Sketch hochladen, seriellen
    Monitor prüfen — siehe `display/README.md` („Dashboard-Sketch").
-4. Fertig, wenn das Display das Dashboard zeigt und die „Stand"-Zeit
-   aktuell ist (neues Bild alle 10 Min automatisch).
+4. Fertig, wenn das Display das Dashboard mit dem heutigen Datum zeigt
+   (neues Bild alle 10 Min automatisch, nur bei Änderungen).
 
 ## Checkliste
 
