@@ -5,12 +5,13 @@ MAC[6] + temp int16LE/100 + humidity uint16LE/100 + battery mV uint16LE
 + battery % + packet counter + flags (15 bytes total).
 
 Polling runs in a background thread every 5 min so HTTP requests never
-wait for a BLE scan. Values older than 1 h fall back to MOCK.
+wait for a BLE scan. Values older than 1 h (or none yet) show a visible
+"–,– °C" placeholder instead of plausible-looking fake values.
 
 The event loop lives for the whole process, not one per scan: each
 asyncio.run() left a dead D-Bus connection behind, and after ~24 h of
 scans dbus-daemon refuses new clients (BleakDBusError AccessDenied),
-which silently switched the display back to MOCK.
+which silently switched the display to fallback values.
 """
 import asyncio
 import struct
@@ -28,6 +29,8 @@ SVC_UUID = "0000181a-0000-1000-8000-00805f9b34fb"
 POLL_INTERVAL = 300
 SCAN_SECONDS = 10
 MAX_AGE = 3600
+LABEL = MOCK["indoor"]["label"]
+OFFLINE = {"label": LABEL, "temp": "–,– °C", "humidity": "Keine Sensordaten"}
 
 _CACHE = {"ts": 0.0, "data": None}
 _started = False
@@ -88,7 +91,7 @@ def _loop():
                     _CACHE.update(ts=data["ts"], data=data)
         except Exception as e:
             # write the reason into server.log; without it any scan
-            # problem only ever shows as silent MOCK fallback on display
+            # problem only ever shows as "Keine Sensordaten" on display
             print("[%s] scan failed: %s: %s" % (time.strftime("%m-%d %H:%M:%S"),
                                                 type(e).__name__, e),
                   flush=True)
@@ -96,7 +99,7 @@ def _loop():
 
 
 def get_indoor():
-    """Live indoor dict (MOCK-compatible); falls back to MOCK."""
+    """Live indoor dict (MOCK-compatible); falls back to OFFLINE."""
     global _started
     if not _started:
         _started = True
@@ -104,9 +107,9 @@ def get_indoor():
     with _lock:
         data = _CACHE["data"] if time.time() - _CACHE["ts"] < MAX_AGE else None
     if data is None:
-        return MOCK["indoor"]
+        return OFFLINE
     return {
-        "label": MOCK["indoor"]["label"],
+        "label": LABEL,
         "temp": ("%.1f" % data["temp"]).replace(".", ",") + " °C",
         "humidity": "Luftfeuchte %d %% · Batt %d %%" % (round(data["hum"]), data["batt"]),
     }

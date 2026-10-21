@@ -1,15 +1,13 @@
 """Live weather via Open-Meteo (free, no API key).
 
 One request delivers current values + 3-day forecast. Results are cached
-for 10 min; on API failure the last good data (or MOCK) is served so the
-display always has something to show.
+for 10 min; on API failure the last good data is kept, or a visible
+"not reachable" placeholder if there is none yet (never fake values).
 """
 import json
 import time
 import urllib.request
 from datetime import date
-
-from render import MOCK
 
 LAT, LON = 48.71838, 9.11792  # 70565 Dürrlewang (Stuttgart)
 CACHE_TTL = 600
@@ -22,6 +20,10 @@ URL = ("https://api.open-meteo.com/v1/forecast"
        "&timezone=Europe%2FBerlin&forecast_days=3")
 
 _CACHE = {"ts": 0.0, "data": None}
+OFFLINE = {
+    "outdoor": {"label": "", "temp": "–,– °C", "sub": "Wetterdienst nicht erreichbar"},
+    "forecast": [],
+}
 WEEKDAYS_SHORT = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 
 
@@ -39,7 +41,7 @@ def _wmo(code):
         return ("drizzle", "Niesel")
     if code in (61, 63, 65, 66, 67, 80, 81, 82):
         return ("rain", "Regen")
-    if code in (71, 73, 75, 77):
+    if code in (71, 73, 75, 77, 85, 86):
         return ("snow", "Schnee")
     return ("storm", "Gewitter")
 
@@ -66,7 +68,6 @@ def _fetch():
             "cond": dcond,
         })
     return {
-        "indoor": MOCK["indoor"],  # sensor comes later
         "outdoor": {
             "label": "",
             "temp": _celsius(cur["temperature_2m"]),
@@ -75,12 +76,11 @@ def _fetch():
                 cur["wind_speed_10m"]),
         },
         "forecast": forecast,
-        "events": MOCK["events"],  # calendar comes later
     }
 
 
 def get_weather():
-    """Live data with cache; falls back to last good data, then MOCK."""
+    """Live data with cache; falls back to last good data, then OFFLINE."""
     if time.time() - _CACHE["ts"] < CACHE_TTL and _CACHE["data"]:
         return _CACHE["data"]
     try:
@@ -88,7 +88,8 @@ def get_weather():
         _CACHE["ts"] = time.time()
     except Exception:
         if _CACHE["data"] is None:
-            _CACHE["data"] = dict(MOCK)
+            # copy: server.py adds "indoor"/"events" to the returned dict
+            _CACHE["data"] = dict(OFFLINE)
         _CACHE["ts"] = time.time()  # Negativ-Caching: kein Retry-Storm
     return _CACHE["data"]
 
