@@ -12,7 +12,6 @@ EV_Y = 340  # top of the events band
 MID = W // 2
 OUT_X = MID + 20
 TEMP_SIZE = 116  # shrinks via fit() for wide values like "-12,4°"
-BATT_WARN = 20  # battery % only shown below this
 
 
 def _rtext(d, x_right, y, text, f):
@@ -38,9 +37,7 @@ def _temps(d, indoor, outdoor, now):
     if indoor["hum"] is None:
         sub = "Keine Sensordaten"
     else:
-        sub = "Luftfeuchte %d %%" % round(indoor["hum"])
-        if indoor["batt"] is not None and indoor["batt"] < BATT_WARN:
-            sub += "  ·  Batterie %d %%" % indoor["batt"]
+        sub = "Luftfeuchte %d %%  ·  Batterie %d %%" % (round(indoor["hum"]), indoor["batt"])
     d.text((M, 164), sub, font=F_sub, fill=0)
 
     d.line([(MID, 14), (MID, FC_Y - 14)], fill=0, width=2)
