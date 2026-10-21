@@ -23,7 +23,7 @@ DEFAULT_LAYOUT = "bands"
 
 # Fixed threshold instead of Floyd-Steinberg dithering: our content is
 # already black-on-white, so a threshold keeps edges crisp without
-# scattered pixels around fine icon strokes.
+# scattered pixels. (Text is drawn monochrome anyway, see render().)
 BLACK_THRESHOLD = 160
 
 
@@ -74,7 +74,12 @@ def render(data=None, now=None, layout=None):
     # Stale forecast (API down for a while) must not show past days.
     data = dict(data, forecast=[f for f in data["forecast"] if f["date"] >= now.date()])
     img = Image.new("L", (W, H), 255)
-    LAYOUTS[layout or LAYOUT](ImageDraw.Draw(img), data, now)
+    d = ImageDraw.Draw(img)
+    # Monochrome glyphs instead of antialiased ones: thresholding grey edge
+    # pixels made stems randomly 2 or 3 px wide (uneven, "frayed" text);
+    # without antialiasing the font hinting keeps every stem the same width.
+    d.fontmode = "1"
+    LAYOUTS[layout or LAYOUT](d, data, now)
     return img.point(lambda p: 255 if p >= BLACK_THRESHOLD else 0, mode="1")
 
 
