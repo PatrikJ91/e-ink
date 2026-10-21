@@ -13,6 +13,7 @@ Scope: keep it simple and pragmatic — a working hobby solution beats a corpora
 - ESP32 constraints: a 48 KB image buffer + WiFi overflows DRAM with full-height GxEPD2 pages — keep page height small (120, must be a multiple of 8). `drawBitmap(x, y, buf, w, h, color)` — the buffer is the 3rd arg.
 - Server: deploy with `scp server/*.py server/requirements.txt eink-raspi:~/e-ink/server/` + `scp server/assets/weather-icons.ttf eink-raspi:~/e-ink/server/assets/` (never copy `calendar.url`/`sensor.mac` — Pi-only secrets); restart with `fuser -k 8080/tcp` + detached start (see `server/README.md`). Never `pkill -f` with a pattern that also matches your own ssh command line. The server loads code only at startup.
 - Contract: `GET http://192.168.178.40:8080/display.raw` returns exactly 48000 bytes, 1 = black, for `drawBitmap(..., GxEPD_BLACK)`. `GET /display.hash` returns the md5 of those bytes (32 hex chars); the ESP skips download + refresh when it matches. The image must stay a pure function of the data (no timestamps) or the hash never matches.
+- Layouts: `EINK_LAYOUT=bands|classic` (default `bands`) picks `layout_bands.py`/`layout_classic.py` at server start; data sources return raw values (None = no data), layouts do the formatting. Preview: `python3 server/render.py` writes `preview.png`.
 - Pi health check: `ssh -o BatchMode=yes eink-raspi "echo ok"`
 
 ## Server access (Raspberry Pi)

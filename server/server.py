@@ -8,7 +8,7 @@ import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from render import render, render_bmp, render_raw
+from render import LAYOUT, render, render_bmp, render_raw
 from weather import get_weather
 from events import get_events
 from sensor import get_indoor
@@ -20,10 +20,8 @@ REFRESH_INTERVAL = 120
 
 
 def _dashboard():
-    data = get_weather()
-    data["events"] = get_events()
-    data["indoor"] = get_indoor()
-    return data
+    # new dict: get_weather() returns its cache, which must stay untouched
+    return dict(get_weather(), events=get_events(), indoor=get_indoor())
 
 
 # The ESP asks for /display.hash and then /display.raw a moment later.
@@ -106,5 +104,5 @@ if __name__ == "__main__":
     except Exception:
         traceback.print_exc()
     start_refresher()
-    print("serving on :%d ..." % PORT)
+    print("serving on :%d (layout: %s) ..." % (PORT, LAYOUT), flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

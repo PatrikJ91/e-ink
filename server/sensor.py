@@ -5,8 +5,9 @@ MAC[6] + temp int16LE/100 + humidity uint16LE/100 + battery mV uint16LE
 + battery % + packet counter + flags (15 bytes total).
 
 Polling runs in a background thread every 5 min so HTTP requests never
-wait for a BLE scan. Values older than 1 h (or none yet) show a visible
-"–,– °C" placeholder instead of plausible-looking fake values.
+wait for a BLE scan. Values older than 1 h (or none yet) come back as
+None, which the layouts show as a visible "–,–" placeholder instead of
+plausible-looking fake values.
 
 The event loop lives for the whole process, not one per scan: each
 asyncio.run() left a dead D-Bus connection behind, and after ~24 h of
@@ -21,16 +22,13 @@ from pathlib import Path
 
 from bleak import BleakScanner
 
-from render import MOCK
-
 BASE_DIR = Path(__file__).resolve().parent
 MAC_FILE = BASE_DIR / "sensor.mac"  # auto-pinned on first sighting (gitignored)
 SVC_UUID = "0000181a-0000-1000-8000-00805f9b34fb"
 POLL_INTERVAL = 300
 SCAN_SECONDS = 10
 MAX_AGE = 3600
-LABEL = MOCK["indoor"]["label"]
-OFFLINE = {"label": LABEL, "temp": "–,– °C", "humidity": "Keine Sensordaten"}
+LABEL = "Wohnzimmer"
 
 _CACHE = {"ts": 0.0, "data": None}
 _started = False
@@ -99,7 +97,7 @@ def _loop():
 
 
 def get_indoor():
-    """Live indoor dict (MOCK-compatible); falls back to OFFLINE."""
+    """{"label", "temp", "hum", "batt"}; values are None without fresh data."""
     global _started
     if not _started:
         _started = True
@@ -107,12 +105,8 @@ def get_indoor():
     with _lock:
         data = _CACHE["data"] if time.time() - _CACHE["ts"] < MAX_AGE else None
     if data is None:
-        return OFFLINE
-    return {
-        "label": LABEL,
-        "temp": ("%.1f" % data["temp"]).replace(".", ",") + " °C",
-        "humidity": "Luftfeuchte %d %% · Batt %d %%" % (round(data["hum"]), data["batt"]),
-    }
+        return {"label": LABEL, "temp": None, "hum": None, "batt": None}
+    return {"label": LABEL, "temp": data["temp"], "hum": data["hum"], "batt": data["batt"]}
 
 
 if __name__ == "__main__":

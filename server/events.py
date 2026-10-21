@@ -2,28 +2,25 @@
 
 The URL lives in calendar.url next to this file (chmod 600, never logged,
 never committed). Events are cached for 10 min; on failure the last good
-events are kept, or a visible "not reachable" row if there are none yet
-(never fake events that could pass for real ones).
+events are kept, or None ("not reachable") if there are none yet. The
+layouts show that visibly, never fake events that could pass for real ones.
 """
 import time
 import urllib.request
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from icalendar import Calendar
 from recurring_ical_events import of
 
-from render import TZ, WEEKDAYS
+from draw import TZ
 
 BASE_DIR = Path(__file__).resolve().parent
-WINDOW_DAYS = 14  # wide enough that all 4 rows usually fill up
-MAX_ROWS = 4
+WINDOW_DAYS = 14  # wide enough that all rows usually fill up
+MAX_ROWS = 4  # the most any layout shows
 CACHE_TTL = 600
 
 _CACHE = {"ts": 0.0, "data": None}
-OFFLINE = [("", "", "Kalender nicht erreichbar")]
-WEEKDAYS_SHORT = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 
 
 def _as_berlin(value):
@@ -49,35 +46,30 @@ def _fetch():
         if end is not None and end <= now:
             continue  # already over
         allday = isinstance(start_raw.dt, date) and not isinstance(start_raw.dt, datetime)
-        title = str(ev.get("SUMMARY", "(ohne Titel)"))
-        location = ev.get("LOCATION")
-        if location:
-            title += " | %s" % location
-        rows.append((
-            start,
-            "%s %02d.%02d." % (WEEKDAYS_SHORT[start.weekday()], start.day, start.month),
-            "ganztägig" if allday else "%02d:%02d" % (start.hour, start.minute),
-            " ".join(title.split()),
-        ))
-    rows.sort()
-    out = [(d, t, title) for _, d, t, title in rows[:MAX_ROWS]]
-    return out or [("", "", "Keine Termine")]
+        location = " ".join(str(ev.get("LOCATION") or "").split())
+        rows.append((start, {
+            "date": start.date(),
+            "time": None if allday else "%02d:%02d" % (start.hour, start.minute),
+            "title": " ".join(str(ev.get("SUMMARY", "(ohne Titel)")).split()),
+            "location": location or None,
+        }))
+    rows.sort(key=lambda r: (r[0], r[1]["title"]))
+    return [ev for _, ev in rows[:MAX_ROWS]]
 
 
 def get_events():
-    """Live rows as (date, time, title); falls back to OFFLINE on failure."""
-    if time.time() - _CACHE["ts"] < CACHE_TTL and _CACHE["data"]:
+    """Upcoming events as dicts (date, time or None = all-day, title,
+    location or None); [] = no events, None = calendar not reachable."""
+    if time.time() - _CACHE["ts"] < CACHE_TTL:
         return _CACHE["data"]
     try:
         _CACHE["data"] = _fetch()
-        _CACHE["ts"] = time.time()
     except Exception:
-        if _CACHE["data"] is None:
-            _CACHE["data"] = list(OFFLINE)
-        _CACHE["ts"] = time.time()  # Negativ-Caching: kein Retry-Storm
+        pass  # keep the last good events (or None)
+    _CACHE["ts"] = time.time()  # also on failure: Negativ-Caching, kein Retry-Storm
     return _CACHE["data"]
 
 
 if __name__ == "__main__":
-    for row in get_events():
-        print("%s | %s | %.40s..." % (row[0], row[1], row[2]))
+    for ev in get_events() or []:
+        print("%s | %s | %.40s" % (ev["date"], ev["time"] or "ganztägig", ev["title"]))

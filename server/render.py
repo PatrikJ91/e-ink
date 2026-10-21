@@ -1,182 +1,80 @@
-"""Render the 800x480 1-bit dashboard image (V1 layout).
+"""Render the 800x480 1-bit dashboard image in the configured layout.
 
-Layout matches display/mockup_dashboard_v1.png. Data comes in as a plain
-dict so mocked data can later be replaced 1:1 by real sensor/API/calendar
-sources without touching the drawing code.
+Layouts (switch with the environment variable EINK_LAYOUT, read once at
+server start):
+  bands    three full-width bands: temperatures, forecast, events (default)
+  classic  the V1 four-quarter layout (display/mockup_dashboard_v1.png)
+
+Data comes in as a plain dict of raw values (numbers, dates; None = no
+data); each layout does its own formatting.
 """
 import io
-from datetime import datetime
-from functools import lru_cache
-from pathlib import Path
-from zoneinfo import ZoneInfo
-from PIL import Image, ImageDraw, ImageFont
+import os
+from datetime import datetime, timedelta
 
-BASE_DIR = Path(__file__).resolve().parent
+from PIL import Image, ImageDraw
 
-# Weather Icons by Erik Flowers (SIL Open Font License 1.1),
-# bundled in assets/. Day variants match the reference style.
-GLYPHS = {
-    # Sun-free variants so the icon matches the text (no sun in "Regen").
-    "sun": "\uf00d",      # day-sunny
-    "partly": "\uf002",   # day-cloudy
-    "cloud": "\uf041",    # cloud
-    "fog": "\uf014",      # fog
-    "drizzle": "\uf01a",  # showers (no sun)
-    "rain": "\uf019",     # rain (no sun)
-    "snow": "\uf01b",     # snow (no sun)
-    "storm": "\uf01e",    # storm-showers (no sun)
-}
+import layout_bands
+import layout_classic
+from draw import H, TZ, W
 
+LAYOUTS = {"bands": layout_bands.draw, "classic": layout_classic.draw}
+DEFAULT_LAYOUT = "bands"
 
-def _weather_font(size):
-    for path in (BASE_DIR / "assets" / "weather-icons.ttf",
-                 Path("/usr/share/fonts/truetype/weather-icons/weather-icons.ttf")):
-        try:
-            return ImageFont.truetype(str(path), size)
-        except OSError:
-            continue
-    raise RuntimeError("weather icon font not found in assets/")
-
-W, H = 800, 480
-M = 16
-DIV_Y = 222  # horizontal dividers left and right share this height
 # Fixed threshold instead of Floyd-Steinberg dithering: our content is
 # already black-on-white, so a threshold keeps edges crisp without
 # scattered pixels around fine icon strokes.
 BLACK_THRESHOLD = 160
 
-# Display stands in Berlin: explicit timezone, independent of the Pi's
-# system timezone (which may be e.g. London/BST).
-TZ = ZoneInfo("Europe/Berlin")
 
-# No locale dependency: German names hardcoded (Pi locale may be C/POSIX).
-WEEKDAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag",
-            "Freitag", "Samstag", "Sonntag"]
-
-MOCK = {
-    "indoor": {"label": "Wohnzimmer", "temp": "21,5 °C", "humidity": "Luftfeuchte 45 %"},
-    "outdoor": {"label": "Berlin", "temp": "14,2 °C", "sub": "Bewölkt · gefühlt 12 °C"},
-    "forecast": [
-        {"day": "Fr", "icon": "sun", "temps": "15°/9°", "cond": "Sonne"},
-        {"day": "Sa", "icon": "cloud", "temps": "13°/8°", "cond": "Wolken"},
-        {"day": "So", "icon": "rain", "temps": "12°/7°", "cond": "Regen"},
-    ],
-    "events": [
-        ("Fr 09.10.", "14:00", "Zahnarzt"),
-        ("Fr 09.10.", "16:30", "Anruf Mama"),
-        ("Fr 09.10.", "19:00", "Sport"),
-        ("Mo 12.10.", "09:00", "Standup"),
-    ],
-}
-
-_FONT_PATHS = [
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans{bold}.ttf",  # Raspberry Pi OS
-    "/System/Library/Fonts/Helvetica.ttc",  # macOS dev machine
-    "DejaVuSans{bold}.ttf",
-]
+def _configured_layout():
+    name = (os.environ.get("EINK_LAYOUT") or DEFAULT_LAYOUT).strip().lower()
+    if name not in LAYOUTS:
+        # A typo must not take the display down: warn into server.log
+        # and keep going with the default.
+        print("unknown EINK_LAYOUT=%r, using %r (known: %s)"
+              % (name, DEFAULT_LAYOUT, ", ".join(sorted(LAYOUTS))), flush=True)
+        return DEFAULT_LAYOUT
+    return name
 
 
-@lru_cache(maxsize=None)  # fonts never change at runtime
-def _font(size, bold=False):
-    for pattern in _FONT_PATHS:
-        path = pattern.format(bold="-Bold" if bold and "DejaVu" in pattern else "")
-        try:
-            return ImageFont.truetype(path, size)
-        except Exception:
-            continue
-    return ImageFont.load_default()
+LAYOUT = _configured_layout()
 
 
-def render(data=None, now=None):
+def sample_data(today):
+    """Plausible demo data for previews (python3 render.py)."""
+    day = lambda n: today + timedelta(days=n)
+    return {
+        "indoor": {"label": "Wohnzimmer", "temp": 21.5, "hum": 45, "batt": 87},
+        "outdoor": {"temp": 12.4, "feels": 10.1, "wind": 14.2,
+                    "icon": "partly", "cond": "Wechselhaft"},
+        "forecast": [
+            {"date": day(0), "icon": "partly", "cond": "Wechselhaft", "hi": 13.2, "lo": 8.6},
+            {"date": day(1), "icon": "rain", "cond": "Regen", "hi": 12.8, "lo": 7.9},
+            {"date": day(2), "icon": "cloud", "cond": "Bedeckt", "hi": 11.1, "lo": 6.3},
+            {"date": day(3), "icon": "sun", "cond": "Klar", "hi": 14.4, "lo": 4.8},
+        ],
+        "events": [
+            {"date": day(0), "time": "18:30", "title": "Volleyball",
+             "location": "Sporthalle Dürrlewang"},
+            {"date": day(1), "time": None, "title": "Papiertonne rausstellen",
+             "location": None},
+            {"date": day(1), "time": "09:00", "title": "Zahnarzt Dr. Weber",
+             "location": "Vaihingen, Hauptstr. 12"},
+            {"date": day(1), "time": "19:00", "title": "Abendessen mit Lena und Tom",
+             "location": None},
+        ],
+    }
+
+
+def render(data=None, now=None, layout=None):
     """Draw the dashboard, return a 1-bit PIL image."""
-    data = data or MOCK
     now = now or datetime.now(TZ)
+    data = data or sample_data(now.date())
+    # Stale forecast (API down for a while) must not show past days.
+    data = dict(data, forecast=[f for f in data["forecast"] if f["date"] >= now.date()])
     img = Image.new("L", (W, H), 255)
-    d = ImageDraw.Draw(img)
-
-    F_label = _font(22, True)
-    F_sub = _font(22)
-    F_day = _font(24, True)
-    F_body = _font(24)
-    F_small = _font(20)
-    F_foot = _font(18)
-
-    def fit(text, max_w, start, bold=False):
-        size = start
-        while size > 10:
-            f = _font(size, bold)
-            if d.textlength(text, font=f) <= max_w:
-                return f
-            size -= 2
-        return _font(10, bold)
-
-    def rule(x0, y, x1, w=3):
-        d.line([(x0, y), (x1, y)], fill=0, width=w)
-
-    # Forecast icons from the bundled Weather Icons font, left-aligned
-    # with the day label. Small enough to clear the temperatures below
-    # (rain glyphs extend far below the baseline).
-    F_icon = _weather_font(50)
-
-    def draw_icon(key, cx, y):
-        glyph = GLYPHS.get(key, GLYPHS["cloud"])
-        bb = d.textbbox((0, 0), glyph, font=F_icon)
-        d.text((cx - bb[0], y), glyph, font=F_icon, fill=0)
-
-    # Left: temperatures (no header anymore: everything moved up)
-    indoor, outdoor = data["indoor"], data["outdoor"]
-    y = 20
-    d.text((M, y), "INNEN  ·  %s" % indoor["label"], font=F_label, fill=0)
-    d.text((M, y + 32), indoor["temp"], font=fit(indoor["temp"], 368, 100, True), fill=0)
-    d.text((M, y + 148), indoor["humidity"], font=F_sub, fill=0)
-    rule(M, DIV_Y, M + 368)
-
-    y2 = DIV_Y + 14
-    outside_title = "AUSSEN" + ("  ·  " + outdoor["label"] if outdoor["label"] else "")
-    d.text((M, y2), outside_title, font=F_label, fill=0)
-    d.text((M, y2 + 32), outdoor["temp"], font=fit(outdoor["temp"], 368, 100, True), fill=0)
-    d.text((M, y2 + 148), outdoor["sub"], font=fit(outdoor["sub"], 368, 22), fill=0)
-
-    d.line([(400, 20), (400, 436)], fill=0, width=3)
-
-    # Right: forecast
-    RX = 416
-    RW = W - M - RX
-    d.text((RX, 20), "VORHERSAGE", font=F_label, fill=0)
-    cell_w = RW // 3
-    for i, fc in enumerate(data["forecast"][:3]):
-        cx = RX + i * cell_w
-        d.text((cx, 52), fc["day"], font=F_day, fill=0)
-        draw_icon(fc["icon"], cx, 80)
-        d.text((cx, 152), fc["temps"], font=F_body, fill=0)
-        d.text((cx, 182), fc["cond"], font=fit(fc["cond"], cell_w - 4, 20), fill=0)
-    rule(RX, DIV_Y, RX + RW)
-
-    # Right bottom: events in 3 columns (date, time, name).
-    # Date/time use a smaller font and tight gaps so the name column
-    # gets maximum width; column starts are measured so nothing overlaps.
-    F_ev = _font(18, True)
-    events = data["events"][:4]
-    date_x = RX
-    time_x = date_x + max(d.textlength(day, font=F_ev) for day, _, _ in events) + 10
-    title_x = time_x + max(d.textlength(t, font=F_ev) for _, t, _ in events) + 10
-    title_w = RX + RW - title_x
-    yt = DIV_Y + 14
-    d.text((RX, yt), "TERMINE", font=F_label, fill=0)
-    yy = yt + 36
-    for day, t, title in events:
-        d.text((date_x, yy), day, font=F_ev, fill=0)
-        d.text((time_x, yy), t, font=F_ev, fill=0)
-        d.text((title_x, yy), title, font=fit(title, title_w, 22), fill=0)
-        yy += 36
-
-    # Footer: weekday + date only, small, bottom left.
-    # No timestamp: the image must be a pure function of the data so the
-    # server hash (and the ESP skip logic) only changes on real changes.
-    rule(M, 448, W - M)
-    d.text((M, 454), "%s, %02d.%02d." % (
-        WEEKDAYS[now.weekday()], now.day, now.month), font=F_foot, fill=0)
-
+    LAYOUTS[layout or LAYOUT](ImageDraw.Draw(img), data, now)
     return img.point(lambda p: 255 if p >= BLACK_THRESHOLD else 0, mode="1")
 
 
@@ -199,4 +97,4 @@ def render_bmp(img=None):
 
 if __name__ == "__main__":
     render().save("preview.png")
-    print("saved preview.png")
+    print("saved preview.png (layout: %s)" % LAYOUT)
