@@ -63,17 +63,19 @@ def _forecast(d, forecast, today):
         d.text((M, y0 + 62), "Keine Vorhersage verfügbar", font=font(26), fill=0)
         return
     F_day, F_hi, F_lo, F_cond = font(24, True), font(36, True), font(26), font(20)
-    cw = (W - 2 * M) // 4
+    cw = (W - 2 * M) // 4  # cell borders at 210/400/590: the middle one meets MID
     for n, fc in enumerate(forecast[:4]):
-        cx = M + n * cw
+        cx = M
         if n:
-            d.line([(cx - 10, y0 + 16), (cx - 10, y0 + BAND - 16)], fill=0, width=1)
+            border = M + n * cw
+            d.line([(border, y0 + 16), (border, y0 + BAND - 16)], fill=0, width=2)
+            cx = border + 20  # same inset as the outdoor block (OUT_X = MID + 20)
         label = "Heute" if fc["date"] == today else WEEKDAYS_SHORT[fc["date"].weekday()]
         d.text((cx, y0 + 12), label, font=F_day, fill=0)
         icon(d, fc["icon"], cx, y0 + 50, 54, top=True)
         d.text((cx + 82, y0 + 46), "%d°" % round(fc["hi"]), font=F_hi, fill=0)
         d.text((cx + 82, y0 + 88), "%d°" % round(fc["lo"]), font=F_lo, fill=0)
-        d.text((cx, y0 + 124), ellipsize(d, fc["cond"], F_cond, cw - 16), font=F_cond, fill=0)
+        d.text((cx, y0 + 124), ellipsize(d, fc["cond"], F_cond, cw - 24), font=F_cond, fill=0)
 
 
 def _events(d, events, today):
